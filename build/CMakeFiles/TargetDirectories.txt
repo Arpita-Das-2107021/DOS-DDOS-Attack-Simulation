@@ -1,0 +1,4 @@
+D:/Study/4th year 1st term/15_Security/Dola Ma'am/cpp-lab/build/CMakeFiles/server.dir
+D:/Study/4th year 1st term/15_Security/Dola Ma'am/cpp-lab/build/CMakeFiles/client.dir
+D:/Study/4th year 1st term/15_Security/Dola Ma'am/cpp-lab/build/CMakeFiles/edit_cache.dir
+D:/Study/4th year 1st term/15_Security/Dola Ma'am/cpp-lab/build/CMakeFiles/rebuild_cache.dir

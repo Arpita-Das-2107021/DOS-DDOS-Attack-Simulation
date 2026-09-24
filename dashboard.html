@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DoS / DDoS Local Lab</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --success: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Arial, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { margin-top: 0; font-size: 16px; color: var(--accent); }
+  label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  select, input[type=number] {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    width: 220px;
+  }
+  button {
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 16px;
+    margin-right: 8px;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .status-row { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; }
+  .stat { min-width: 90px; }
+  .stat .value { font-size: 20px; font-weight: 600; }
+  .stat .label { font-size: 12px; color: var(--muted); }
+  .success { color: var(--success); }
+  .warn { color: var(--warn); }
+  .danger { color: var(--danger); }
+  .progress {
+    height: 6px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 16px;
+    border: 1px solid var(--border);
+  }
+  .progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  a.download { color: var(--accent); text-decoration: none; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>DoS / DDoS Local Lab</h1>
+<div class="sub">Control panel &mdash; target server: http://127.0.0.1:8080 (localhost only)</div>
+
+<div class="card">
+  <h2>Run a phase</h2>
+
+  <label for="phase">Phase</label>
+  <select id="phase">
+    <option value="baseline">Baseline - normal traffic (1 worker)</option>
+    <option value="dos">DoS - single source, many connections</option>
+    <option value="ddos">DDoS - many simulated bot sources</option>
+    <option value="all">Run all three back-to-back</option>
+  </select>
+
+  <label for="duration">Duration (seconds, 5-30)</label>
+  <input type="number" id="duration" min="5" max="30" value="10">
+
+  <div>
+    <button id="runBtn">Run</button>
+    <button id="clearBtn" class="secondary">Clear results</button>
+  </div>
+
+  <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+
+  <div class="status-row">
+    <div class="stat"><div class="value" id="statPhase">-</div><div class="label">Phase</div></div>
+    <div class="stat"><div class="value" id="statTime">0/0s</div><div class="label">Elapsed</div></div>
+    <div class="stat"><div class="value" id="statTotal">0</div><div class="label">Total</div></div>
+    <div class="stat"><div class="value success" id="statSuccess">0</div><div class="label">Success</div></div>
+    <div class="stat"><div class="value warn" id="statRejected">0</div><div class="label">Rejected</div></div>
+    <div class="stat"><div class="value danger" id="statFailed">0</div><div class="label">Failed</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Comparison</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th><th>Workers</th><th>Total</th><th>Success</th>
+        <th>Rejected</th><th>Failed</th><th>Avg latency</th><th>Req/s</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+  <p><a class="download" href="/api/csv" download="results.csv">Download results.csv</a></p>
+</div>
+
+<script>
+const phaseSelect = document.getElementById('phase');
+const durationInput = document.getElementById('duration');
+const runBtn = document.getElementById('runBtn');
+const clearBtn = document.getElementById('clearBtn');
+const progressBar = document.getElementById('progressBar');
+
+const confirmMessages = {
+  dos: 'This opens many simultaneous connections to the local target server. Continue?',
+  ddos: 'This simulates many bot sources hitting the local target server. Continue?',
+  all: 'This runs baseline, DoS, and DDoS back-to-back. Continue?'
+};
+
+function setStats(s) {
+  document.getElementById('statPhase').textContent = s.phase;
+  document.getElementById('statTime').textContent = Math.round(s.elapsedSec) + '/' + s.durationSec + 's';
+  document.getElementById('statTotal').textContent = s.total;
+  document.getElementById('statSuccess').textContent = s.success;
+  document.getElementById('statRejected').textContent = s.rejected;
+  document.getElementById('statFailed').textContent = s.failed;
+
+  const pct = s.durationSec > 0 ? Math.min(100, (s.elapsedSec / s.durationSec) * 100) : 0;
+  progressBar.style.width = pct + '%';
+}
+
+function renderResults(list) {
+  const body = document.getElementById('resultsBody');
+  body.innerHTML = '';
+  list.forEach(r => {
+    const row = document.createElement('tr');
+    row.innerHTML =
+      '<td>' + r.name + '</td>' +
+      '<td>' + r.workers + '</td>' +
+      '<td>' + r.total + '</td>' +
+      '<td class="success">' + r.success + '</td>' +
+      '<td class="warn">' + r.rejected + '</td>' +
+      '<td class="danger">' + r.failed + '</td>' +
+      '<td>' + r.avgLatencyMs.toFixed(1) + ' ms</td>' +
+      '<td>' + r.throughputRps.toFixed(1) + '</td>';
+    body.appendChild(row);
+  });
+}
+
+function refreshResults() {
+  fetch('/api/results').then(r => r.json()).then(renderResults);
+}
+
+function pollStatus() {
+  fetch('/api/status').then(r => r.json()).then(s => {
+    setStats(s);
+    if (s.running) {
+      setTimeout(pollStatus, 500);
+    } else {
+      runBtn.disabled = false;
+      refreshResults();
+    }
+  });
+}
+
+runBtn.addEventListener('click', () => {
+  const phase = phaseSelect.value;
+  const duration = durationInput.value;
+
+  if (confirmMessages[phase] && !confirm(confirmMessages[phase])) return;
+
+  runBtn.disabled = true;
+  fetch('/api/run?phase=' + phase + '&duration=' + duration, { method: 'POST' })
+    .then(r => r.json())
+    .then(res => {
+      if (!res.ok) {
+        alert(res.error || 'Could not start phase');
+        runBtn.disabled = false;
+        return;
+      }
+      pollStatus();
+    });
+});
+
+clearBtn.addEventListener('click', () => {
+  if (!confirm('Clear all recorded results?')) return;
+  fetch('/api/reset', { method: 'POST' }).then(r => r.json()).then(() => refreshResults());
+});
+
+refreshResults();
+pollStatus();
+</script>
+
+</body>
+</html>
